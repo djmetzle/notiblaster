@@ -1,0 +1,26 @@
+services:
+  nats:
+    image: docker.io/library/nats:2-alpine
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    ports:
+      - "4222:4222"
+      - "8090:8080"
+      - "8222:8222"
+    volumes:
+      - ./nats/nats-server.conf:/etc/nats/nats-server.conf:ro,Z
+      - nats-data:/data
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      - nats
+    environment:
+      NATS_URL: nats://nats:4222
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+
+volumes:
+  nats-data:

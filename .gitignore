@@ -1,0 +1,10 @@
+node_modules/
+dist/
+server/public/
+*.log
+.DS_Store
+.env
+.env.local
+
+# JetStream data directory (mounted volume contents)
+nats-data/
