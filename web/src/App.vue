@@ -18,11 +18,12 @@ const toggles = reactive<Record<BroadcastCategory, boolean>>({
   community: false,
 });
 
-// Raw string so the field can be empty; parse on use.
-const userIdInput = ref('');
+// Vue's v-model on <input type="number"> may yield either a string (empty)
+// or a number, so we pass through parseUserId, which accepts both.
+const userIdInput = ref<string | number>('');
 
 const publishCategory = ref<PublishCategory>('news');
-const publishUserId = ref('');
+const publishUserId = ref<string | number>('');
 const publishMessage = ref('');
 const publishing = ref(false);
 const publishError = ref('');
@@ -31,14 +32,20 @@ let nc: NatsConnection | null = null;
 const subs = new Map<string, Subscription>();
 const activeSubs = reactive(new Set<string>());
 
+// Every JetStream message has a stream-wide seq. Using it as a dedup key means
+// re-subscribing (e.g. switching back to a previously-viewed userid) replays
+// without producing duplicate rows.
+const seenSeqs = new Set<number>();
+
 const onMessage = (n: Notification) => {
+  if (seenSeqs.has(n.seq)) return;
+  seenSeqs.add(n.seq);
   messages.value.unshift(n);
 };
 
-function parseUserId(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (trimmed === '') return null;
-  const n = Number(trimmed);
+function parseUserId(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
@@ -145,7 +152,10 @@ async function onPublish() {
           step="1"
           placeholder="e.g. 42"
         />
-        <span v-if="userIdInput && parseUserId(userIdInput) === null" class="error">
+        <span
+          v-if="userIdInput !== '' && parseUserId(userIdInput) === null"
+          class="error"
+        >
           must be a non-negative integer
         </span>
         <span v-else-if="activeSubs.has('user')" class="muted">
@@ -168,7 +178,7 @@ async function onPublish() {
     <section>
       <h2>publish</h2>
       <form @submit.prevent="onPublish" class="publish-form">
-        <label>
+        <label class="to-field">
           to
           <select v-model="publishCategory">
             <option value="news">News</option>
@@ -177,7 +187,7 @@ async function onPublish() {
             <option value="user">User</option>
           </select>
         </label>
-        <label v-if="publishCategory === 'user'">
+        <label class="target-userid" v-show="publishCategory === 'user'">
           userid
           <input
             v-model="publishUserId"
@@ -185,14 +195,13 @@ async function onPublish() {
             min="0"
             step="1"
             placeholder="target userid"
-            required
           />
         </label>
-        <label class="grow">
+        <label class="message-field">
           message
           <input v-model="publishMessage" required placeholder="hello…" />
         </label>
-        <button type="submit" :disabled="publishing">
+        <button class="publish-btn" type="submit" :disabled="publishing">
           {{ publishing ? 'publishing…' : 'publish' }}
         </button>
         <p v-if="publishError" class="error">{{ publishError }}</p>
@@ -205,7 +214,7 @@ async function onPublish() {
         toggle a category or set your userid to start receiving.
       </p>
       <ul>
-        <li v-for="(m, i) in messages" :key="i">
+        <li v-for="m in messages" :key="m.seq">
           <time>{{ m.receivedAt.toLocaleTimeString() }}</time>
           <code>{{ m.subject }}</code>
           <span>{{ m.data }}</span>
@@ -230,12 +239,23 @@ input[type=number] { width: 8rem; }
 .toggles label { display: flex; align-items: center; gap: 0.4rem; color: #e6edf3; text-transform: capitalize; cursor: pointer; }
 .muted { color: #8b949e; font-size: 0.85rem; margin: 0.5rem 0 0; }
 .error { color: #f85149; font-size: 0.85rem; }
-.publish-form { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
+.publish-form {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  grid-template-areas:
+    "to user message button"
+    "err err err err";
+  gap: 0.75rem;
+  align-items: end;
+}
 .publish-form label { display: flex; flex-direction: column; font-size: 0.75rem; color: #8b949e; gap: 0.2rem; }
-.publish-form .grow { flex: 1 1 15rem; }
-.publish-form button { padding: 0.5rem 1rem; background: #238636; border: 0; color: white; border-radius: 4px; font: inherit; cursor: pointer; height: 2.1rem; }
-.publish-form button:disabled { opacity: 0.6; cursor: not-allowed; }
-.publish-form .error { flex-basis: 100%; }
+.publish-form .to-field { grid-area: to; }
+.publish-form .target-userid { grid-area: user; }
+.publish-form .message-field { grid-area: message; min-width: 0; }
+.publish-form .message-field input { width: 100%; }
+.publish-form .publish-btn { grid-area: button; padding: 0.5rem 1rem; background: #238636; border: 0; color: white; border-radius: 4px; font: inherit; cursor: pointer; height: 2.1rem; }
+.publish-form .publish-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.publish-form .error { grid-area: err; margin: 0; }
 ul { list-style: none; padding: 0; margin: 0; }
 li { display: grid; grid-template-columns: auto auto 1fr; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid #21262d; font-size: 0.95rem; }
 time { color: #8b949e; font-variant-numeric: tabular-nums; }

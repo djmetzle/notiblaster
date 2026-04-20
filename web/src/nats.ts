@@ -5,6 +5,7 @@ import {
 } from 'nats.ws';
 
 export type Notification = {
+  seq: number;
   subject: string;
   data: string;
   receivedAt: Date;
@@ -47,6 +48,7 @@ export async function subscribe(
   const loop = (async () => {
     for await (const m of messages) {
       onMessage({
+        seq: m.seq,
         subject: m.subject,
         data: m.string(),
         receivedAt: new Date(),
