@@ -8,6 +8,13 @@ Host ports: Fastify `3000`, Vite dev `5173`, NATS native `4222`, NATS
 WebSocket `8090` (mapped to `8080` inside the container), NATS monitoring
 `8222`.
 
+```mermaid
+flowchart LR
+    Browser -->|WebSocket subscribe| NATS[(NATS JetStream)]
+    Browser -->|POST /api/publish| Fastify
+    Fastify -->|publish| NATS
+```
+
 ## Prereqs
 
 - Node 20+ and pnpm (via `corepack enable`)
