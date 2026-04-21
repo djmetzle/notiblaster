@@ -133,131 +133,126 @@ async function onPublish() {
 </script>
 
 <template>
-  <main>
-    <header>
-      <h1>notiblaster</h1>
-      <p class="status" :data-status="status">
+  <header class="container">
+    <h1>Notiblaster</h1>
+    <p>
+      <small>
         NATS: {{ status }}<span v-if="errorMsg"> — {{ errorMsg }}</span>
-      </p>
-    </header>
-
-    <section>
-      <h2>identity</h2>
-      <label class="row">
-        my userid
+      </small>
+    </p>
+  </header>
+  <main class="container">
+    <article>
+      <h2>Identity</h2>
+      <label>
+        My userid
         <input
           v-model="userIdInput"
           type="number"
           min="0"
           step="1"
           placeholder="e.g. 42"
+          aria-describedby="userid-help"
+          :aria-invalid="
+            userIdInput !== '' && parseUserId(userIdInput) === null
+              ? 'true'
+              : undefined
+          "
         />
-        <span
-          v-if="userIdInput !== '' && parseUserId(userIdInput) === null"
-          class="error"
-        >
-          must be a non-negative integer
-        </span>
-        <span v-else-if="activeSubs.has('user')" class="muted">
-          subscribed to notify.user.{{ parseUserId(userIdInput) }} (with replay)
-        </span>
       </label>
-    </section>
+      <small
+        id="userid-help"
+        v-if="userIdInput !== '' && parseUserId(userIdInput) === null"
+      >
+        Must be a non-negative integer.
+      </small>
+      <small id="userid-help" v-else-if="activeSubs.has('user')">
+        Subscribed to <code>notify.user.{{ parseUserId(userIdInput) }}</code>
+        (with replay).
+      </small>
+    </article>
 
-    <section>
-      <h2>subscriptions</h2>
-      <div class="toggles">
+    <article>
+      <h2>Subscriptions</h2>
+      <fieldset class="grid">
         <label v-for="cat in BROADCAST_CATEGORIES" :key="cat">
           <input type="checkbox" v-model="toggles[cat]" />
           {{ cat }}
         </label>
-      </div>
-      <p class="muted">broadcast categories are new-only; your user inbox replays history.</p>
-    </section>
+      </fieldset>
+      <footer>
+        <small>
+          Broadcast categories deliver new messages only; your user inbox
+          replays history on subscribe.
+        </small>
+      </footer>
+    </article>
 
-    <section>
-      <h2>publish</h2>
-      <form @submit.prevent="onPublish" class="publish-form">
-        <label class="to-field">
-          to
-          <select v-model="publishCategory">
-            <option value="news">News</option>
-            <option value="marketing">Marketing</option>
-            <option value="community">Community</option>
-            <option value="user">User</option>
-          </select>
-        </label>
-        <label class="target-userid" v-show="publishCategory === 'user'">
-          userid
+    <article>
+      <h2>Publish</h2>
+      <form @submit.prevent="onPublish">
+        <fieldset class="grid">
+          <label>
+            To
+            <select v-model="publishCategory">
+              <option value="news">News</option>
+              <option value="marketing">Marketing</option>
+              <option value="community">Community</option>
+              <option value="user">User</option>
+            </select>
+          </label>
+          <label v-show="publishCategory === 'user'">
+            Target userid
+            <input
+              v-model="publishUserId"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="e.g. 42"
+            />
+          </label>
+        </fieldset>
+        <label>
+          Message
           <input
-            v-model="publishUserId"
-            type="number"
-            min="0"
-            step="1"
-            placeholder="target userid"
+            v-model="publishMessage"
+            required
+            placeholder="hello…"
+            aria-describedby="publish-error"
           />
         </label>
-        <label class="message-field">
-          message
-          <input v-model="publishMessage" required placeholder="hello…" />
-        </label>
-        <button class="publish-btn" type="submit" :disabled="publishing">
-          {{ publishing ? 'publishing…' : 'publish' }}
+        <small v-if="publishError" id="publish-error" role="alert">
+          {{ publishError }}
+        </small>
+        <button type="submit" :aria-busy="publishing" :disabled="publishing">
+          {{ publishing ? 'Publishing…' : 'Publish' }}
         </button>
-        <p v-if="publishError" class="error">{{ publishError }}</p>
       </form>
-    </section>
+    </article>
 
-    <section>
-      <h2>messages <small>({{ messages.length }})</small></h2>
-      <p v-if="messages.length === 0" class="muted">
-        toggle a category or set your userid to start receiving.
+    <article>
+      <h2>Messages <small>({{ messages.length }})</small></h2>
+      <p v-if="messages.length === 0">
+        <small>
+          Toggle a category or set your userid to start receiving.
+        </small>
       </p>
-      <ul>
-        <li v-for="m in messages" :key="m.seq">
-          <time>{{ m.receivedAt.toLocaleTimeString() }}</time>
-          <code>{{ m.subject }}</code>
-          <span>{{ m.data }}</span>
-        </li>
-      </ul>
-    </section>
+      <table v-else class="striped">
+        <thead>
+          <tr>
+            <th scope="col">Time</th>
+            <th scope="col">Subject</th>
+            <th scope="col">Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="m in messages" :key="m.seq">
+            <td><time>{{ m.receivedAt.toLocaleTimeString() }}</time></td>
+            <td><code>{{ m.subject }}</code></td>
+            <td>{{ m.data }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
   </main>
 </template>
-
-<style>
-body { font-family: system-ui, sans-serif; margin: 0; background: #0e1116; color: #e6edf3; }
-main { max-width: 760px; margin: 0 auto; padding: 2rem 1rem; }
-h1 { margin: 0 0 0.25rem; }
-h2 { margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #30363d; padding-bottom: 0.25rem; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; }
-.status { font-size: 0.9rem; color: #8b949e; margin: 0 0 1rem; }
-.status[data-status="connected"] { color: #3fb950; }
-.status[data-status="error"] { color: #f85149; }
-.row { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; color: #8b949e; }
-input, select { background: #161b22; border: 1px solid #30363d; color: inherit; padding: 0.4rem 0.5rem; border-radius: 4px; font: inherit; }
-input[type=number] { width: 8rem; }
-.toggles { display: flex; gap: 1.25rem; }
-.toggles label { display: flex; align-items: center; gap: 0.4rem; color: #e6edf3; text-transform: capitalize; cursor: pointer; }
-.muted { color: #8b949e; font-size: 0.85rem; margin: 0.5rem 0 0; }
-.error { color: #f85149; font-size: 0.85rem; }
-.publish-form {
-  display: grid;
-  grid-template-columns: auto auto 1fr auto;
-  grid-template-areas:
-    "to user message button"
-    "err err err err";
-  gap: 0.75rem;
-  align-items: end;
-}
-.publish-form label { display: flex; flex-direction: column; font-size: 0.75rem; color: #8b949e; gap: 0.2rem; }
-.publish-form .to-field { grid-area: to; }
-.publish-form .target-userid { grid-area: user; }
-.publish-form .message-field { grid-area: message; min-width: 0; }
-.publish-form .message-field input { width: 100%; }
-.publish-form .publish-btn { grid-area: button; padding: 0.5rem 1rem; background: #238636; border: 0; color: white; border-radius: 4px; font: inherit; cursor: pointer; height: 2.1rem; }
-.publish-form .publish-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.publish-form .error { grid-area: err; margin: 0; }
-ul { list-style: none; padding: 0; margin: 0; }
-li { display: grid; grid-template-columns: auto auto 1fr; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid #21262d; font-size: 0.95rem; }
-time { color: #8b949e; font-variant-numeric: tabular-nums; }
-code { color: #79c0ff; }
-</style>
